@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import {
+  type AnchorHTMLAttributes,
   type ChangeEvent,
   type KeyboardEvent,
   lazy,
@@ -40,6 +41,7 @@ import {
   useLazyDesignFileTree,
 } from '../hooks/useDesignFiles';
 import type { FileTreeNode } from '../lib/file-tree';
+import { classifyMarkdownHref } from '../lib/markdown-links';
 import { workspacePathComparisonKey } from '../lib/workspace-path';
 import {
   formatIframeError,
@@ -221,6 +223,38 @@ function escapeHtmlText(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function MarkdownLink({
+  href,
+  children,
+  node: _node,
+  ...props
+}: AnchorHTMLAttributes<HTMLAnchorElement> & { node?: unknown }) {
+  const action = classifyMarkdownHref(href);
+
+  if (action.kind === 'anchor') {
+    return (
+      <a {...props} href={action.href}>
+        {children}
+      </a>
+    );
+  }
+
+  if (action.kind === 'external') {
+    const handleClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      void window.codesign?.openExternal?.(action.url).catch(() => undefined);
+    };
+
+    return (
+      <a {...props} href={action.url} rel={props.rel ?? 'noreferrer'} onClick={handleClick}>
+        {children}
+      </a>
+    );
+  }
+
+  return <span>{children}</span>;
 }
 
 function WorkspaceSection({ files }: { files: DesignFileEntry[] }) {
@@ -1060,7 +1094,9 @@ function TextFilePreview({
                 </pre>
               </details>
             ) : null}
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown.body}</ReactMarkdown>
+            <ReactMarkdown components={{ a: MarkdownLink }} remarkPlugins={[remarkGfm]}>
+              {markdown.body}
+            </ReactMarkdown>
           </article>
         ) : (
           <pre
