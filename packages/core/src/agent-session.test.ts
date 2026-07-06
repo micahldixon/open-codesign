@@ -9,10 +9,12 @@ describe('createCodesignSession', () => {
   it('creates a session against a custom sessionDir without contacting any provider', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'codesign-cwd-'));
     const sessionDir = mkdtempSync(path.join(tmpdir(), 'codesign-sessions-'));
+    const agentDir = mkdtempSync(path.join(tmpdir(), 'codesign-agent-'));
     try {
       const handle = await createCodesignSession({
         cwd,
         sessionDir,
+        agentDir,
         authStorage: AuthStorage.inMemory(),
         permissionHook: async () => ({ allow: true }),
       });
@@ -22,17 +24,20 @@ describe('createCodesignSession', () => {
     } finally {
       rmSync(cwd, { recursive: true, force: true });
       rmSync(sessionDir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
     }
   });
 
   it('never auto-allows: permission hook is reachable through the bash event surface', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'codesign-cwd-'));
     const sessionDir = mkdtempSync(path.join(tmpdir(), 'codesign-sessions-'));
+    const agentDir = mkdtempSync(path.join(tmpdir(), 'codesign-agent-'));
     const seen: string[] = [];
     try {
       const handle = await createCodesignSession({
         cwd,
         sessionDir,
+        agentDir,
         authStorage: AuthStorage.inMemory(),
         permissionHook: async (cmd) => {
           seen.push(cmd);
@@ -45,6 +50,7 @@ describe('createCodesignSession', () => {
     } finally {
       rmSync(cwd, { recursive: true, force: true });
       rmSync(sessionDir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
     }
   });
 });
