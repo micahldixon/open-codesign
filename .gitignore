@@ -74,3 +74,6 @@ website/public/demos/_speedup/
 # Agent worktrees / transcripts
 .claude/projects/
 .codex-temp/
+
+# Local developer notes (machine-specific paths)
+dev-readme.md

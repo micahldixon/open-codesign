@@ -42,7 +42,11 @@ function isWithinRoot(root: string, candidate: string): boolean {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
-async function resolveSafeManifestPath(root: string, candidate: string): Promise<string> {
+async function resolveSafeManifestPath(
+  root: string,
+  candidate: string,
+  opts: { allowSymlinks?: boolean } = {},
+): Promise<string> {
   const absRoot = path.resolve(root);
   const absPath = path.resolve(candidate);
   if (!isWithinRoot(absRoot, absPath)) {
@@ -57,7 +61,7 @@ async function resolveSafeManifestPath(root: string, candidate: string): Promise
     cursor = path.join(cursor, part);
     try {
       const entry = await lstat(cursor);
-      if (entry.isSymbolicLink()) {
+      if (entry.isSymbolicLink() && !opts.allowSymlinks) {
         throw new Error(
           `registered path traverses symbolic link: ${path.relative(absRoot, cursor)}`,
         );
@@ -82,11 +86,12 @@ export async function listSkillManifest(roots: SkillRoots): Promise<SkillManifes
     const { loadSkillsFromDir } = await import('../skills/loader.js');
     const builtins = await loadSkillsFromDir(roots.skillsRoot, 'builtin');
     for (const skill of builtins) {
+      const relativePath = skill.relativePath ?? `${skill.id}.md`;
       out.push({
         name: skill.frontmatter.name,
         category: 'design',
         source: 'builtin',
-        path: path.join(roots.skillsRoot, `${skill.id}.md`),
+        path: path.join(roots.skillsRoot, relativePath),
         description: skill.frontmatter.description,
         aliases: skill.frontmatter.aliases,
         dependencies: skill.frontmatter.dependencies,
@@ -184,7 +189,16 @@ export async function invokeSkill(opts: InvokeSkillOptions): Promise<InvokeSkill
     if (root === null) {
       throw new Error(`template root unavailable for ${entry.name}`);
     }
-    const body = await readFile(await resolveSafeManifestPath(root, entry.path), 'utf8');
+    const body = await readFile(
+      await resolveSafeManifestPath(root, entry.path, {
+        // The desktop templates directory is user-owned. Allow symlinked
+        // agent-style skill directories here so users can point at external
+        // skill packs without copying their contents. Brand refs stay stricter
+        // because manifest paths are distributed metadata.
+        allowSymlinks: entry.category === 'design',
+      }),
+      'utf8',
+    );
     return { status: 'loaded', body, metadata: entry };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

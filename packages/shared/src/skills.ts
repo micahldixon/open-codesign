@@ -23,6 +23,8 @@ export type SkillFrontmatterV1 = z.infer<typeof SkillFrontmatterV1>;
 export interface LoadedSkill {
   /** File slug — filename minus extension (e.g. "frontend-design-anti-slop"). */
   id: string;
+  /** Path under the skill root. Flat skills use `<id>.md`; agent-style skills use `<id>/SKILL.md`. */
+  relativePath?: string;
   source: 'builtin' | 'user' | 'project';
   frontmatter: SkillFrontmatterV1;
   /** Markdown body after the closing --- delimiter. */

@@ -93,6 +93,46 @@ describe.sequential('skill tool', () => {
     expect(r.metadata?.name).toBe('form-layout');
   });
 
+  it('loads symlinked agent-style skill directories from the user-owned skills root', async () => {
+    const outside = path.join(tmpdir(), `codesign-agent-skill-${process.pid}-${randomUUID()}`);
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(
+      path.join(outside, 'SKILL.md'),
+      [
+        '---',
+        'name: design-bolder',
+        'description: Makes design work more visually committed.',
+        '---',
+        '# design-bolder',
+        '',
+        'Use stronger hierarchy.',
+      ].join('\n'),
+      'utf8',
+    );
+    try {
+      try {
+        symlinkSync(outside, path.join(skillsRoot, 'design-bolder'), 'dir');
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw err;
+      }
+
+      const manifest = await listSkillManifest({ skillsRoot, brandRefsRoot });
+      expect(manifest.find((e) => e.name === 'design-bolder')?.path).toBe(
+        path.join(skillsRoot, 'design-bolder', 'SKILL.md'),
+      );
+
+      const result = await invokeSkill({
+        name: 'design-bolder',
+        roots: { skillsRoot, brandRefsRoot },
+      });
+      expect(result.status).toBe('loaded');
+      expect(result.body).toContain('Use stronger hierarchy.');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it('treats missing roots as explicit empty manifests', async () => {
     const m = await listSkillManifest({
       skillsRoot: path.join(skillsRoot, 'missing'),

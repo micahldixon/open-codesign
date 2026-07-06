@@ -37,6 +37,7 @@ function skillWhenToUse(skill: LoadedSkill): string {
 }
 
 function skillEntry(skill: LoadedSkill, skillsRoot: string): ResourceManifestEntryV1 {
+  const relativePath = skill.relativePath ?? `${skill.id}.md`;
   return {
     name: skill.frontmatter.name,
     description: oneLine(skill.frontmatter.description),
@@ -46,7 +47,7 @@ function skillEntry(skill: LoadedSkill, skillsRoot: string): ResourceManifestEnt
     dependencies: skill.frontmatter.dependencies,
     source: skill.source,
     license: 'MIT',
-    path: path.relative(skillsRoot, path.join(skillsRoot, `${skill.id}.md`)),
+    path: path.relative(skillsRoot, path.join(skillsRoot, relativePath)),
   };
 }
 

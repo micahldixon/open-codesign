@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { CodesignError, ERROR_CODES } from '@open-codesign/shared';
 import { type LoadedSkill, SkillFrontmatterV1 } from './types.js';
@@ -206,17 +206,21 @@ function parseFrontmatter(content: string): ParsedMd {
 
 type SkillLoadOutcome = { ok: true; skill: LoadedSkill } | { ok: false; error: string };
 
+interface SkillFileEntry {
+  id: string;
+  relativePath: string;
+}
+
 function describeErr(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
 async function loadSingleSkill(
   dir: string,
-  entry: string,
+  entry: SkillFileEntry,
   source: LoadedSkill['source'],
 ): Promise<SkillLoadOutcome> {
-  const filePath = join(dir, entry);
-  const id = basename(entry, '.md');
+  const filePath = join(dir, entry.relativePath);
 
   let raw: string;
   try {
@@ -243,24 +247,67 @@ async function loadSingleSkill(
 
   return {
     ok: true,
-    skill: { id, source, frontmatter: result.data, body: parsed.body.trim() },
+    skill: {
+      id: entry.id,
+      relativePath: entry.relativePath,
+      source,
+      frontmatter: result.data,
+      body: parsed.body.trim(),
+    },
   };
+}
+
+async function statOrNull(filePath: string): Promise<Awaited<ReturnType<typeof stat>> | null> {
+  try {
+    return await stat(filePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+async function collectSkillFileEntries(dir: string): Promise<SkillFileEntry[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const skills: SkillFileEntry[] = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+
+    if (extname(entry.name) === '.md') {
+      const entryPath = join(dir, entry.name);
+      const entryStat =
+        entry.isFile() || entry.isSymbolicLink() ? await statOrNull(entryPath) : null;
+      if (entryStat?.isFile()) {
+        skills.push({ id: basename(entry.name, '.md'), relativePath: entry.name });
+      }
+      continue;
+    }
+
+    if (entry.isDirectory() || entry.isSymbolicLink()) {
+      const skillPath = join(dir, entry.name, 'SKILL.md');
+      const skillStat = await statOrNull(skillPath);
+      if (skillStat?.isFile()) {
+        skills.push({ id: entry.name, relativePath: join(entry.name, 'SKILL.md') });
+      }
+    }
+  }
+
+  return skills.sort((a, b) => a.id.localeCompare(b.id, 'en'));
 }
 
 export async function loadSkillsFromDir(
   dir: string,
   source: LoadedSkill['source'],
 ): Promise<LoadedSkill[]> {
-  let entries: string[];
+  let entries: SkillFileEntry[];
   try {
-    entries = await readdir(dir);
+    entries = await collectSkillFileEntries(dir);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw err;
   }
 
-  const mdEntries = entries.filter((entry) => extname(entry) === '.md');
-  const outcomes = await Promise.all(mdEntries.map((entry) => loadSingleSkill(dir, entry, source)));
+  const outcomes = await Promise.all(entries.map((entry) => loadSingleSkill(dir, entry, source)));
 
   const skills: LoadedSkill[] = [];
   const errors: string[] = [];

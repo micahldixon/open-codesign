@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -102,6 +102,41 @@ describe('loadSkillsFromDir()', () => {
     expect(skill.frontmatter.name).toBe('my-skill');
     expect(skill.frontmatter.description).toBe('A minimal test skill.');
     expect(skill.body).toBe('Skill body content.');
+  });
+
+  it('loads agent-style skill directories with SKILL.md', async () => {
+    await writeSkill(
+      join(testDir, 'agent-skill'),
+      'SKILL.md',
+      MINIMAL_SKILL.replace('my-skill', 'agent-skill'),
+    );
+
+    const skills = await loadSkillsFromDir(testDir, 'user');
+    expect(skills).toHaveLength(1);
+    expect(skills[0]?.id).toBe('agent-skill');
+    expect(skills[0]?.relativePath).toBe(join('agent-skill', 'SKILL.md'));
+    expect(skills[0]?.body).toBe('Skill body content.');
+  });
+
+  it('loads symlinked agent-style skill directories', async () => {
+    const outside = join(tmpdir(), `skills-outside-${process.pid}-${Date.now()}`);
+    await mkdir(outside, { recursive: true });
+    await writeSkill(outside, 'SKILL.md', MINIMAL_SKILL.replace('my-skill', 'linked-skill'));
+    try {
+      try {
+        await symlink(outside, join(testDir, 'linked-skill'), 'dir');
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw err;
+      }
+
+      const skills = await loadSkillsFromDir(testDir, 'user');
+      expect(skills).toHaveLength(1);
+      expect(skills[0]?.id).toBe('linked-skill');
+      expect(skills[0]?.relativePath).toBe(join('linked-skill', 'SKILL.md'));
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   it('parses full frontmatter including trigger block', async () => {
